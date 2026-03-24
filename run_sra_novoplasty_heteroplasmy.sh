@@ -287,6 +287,7 @@ run_trim() {
   local sid="$1"
   local sid_dir="$raw_dir/$sid"
   local done_flag="$trim_dir/$sid.trim.done"
+  local -a trim_steps=()
   if [[ -f "$done_flag" ]]; then
     echo "[trim] $sid already done, skipping"
     return
@@ -304,12 +305,14 @@ run_trim() {
   local outU1="$trim_dir/$sid/${sid}_1U.fastq"
   local outP2="$trim_dir/$sid/${sid}_2P.fastq"
   local outU2="$trim_dir/$sid/${sid}_2U.fastq"
+  local IFS=' '
+  read -r -a trim_steps <<< "$TRIM_PARAMS"
 
   echo "[trim] $sid: running Trimmomatic"
   "${TRIMMOMATIC_CMD[@]}" PE -threads "$THREADS" -phred33 \
     "$r1" "$r2" \
     "$outP" "$outU1" "$outP2" "$outU2" \
-    ILLUMINACLIP:"$ADAPTERS":2:30:10 $TRIM_PARAMS
+    ILLUMINACLIP:"$ADAPTERS":2:30:10 "${trim_steps[@]}"
 
   touch "$done_flag"
 }
