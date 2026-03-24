@@ -69,6 +69,8 @@ declare -a TRIMMOMATIC_CMD=()
 
 # function to detect tools automatically
 detect_tools() {
+  local path
+
   # Prefer an executable in PATH, but also support a jar file path.
   if [[ -f "$TRIMMOMATIC_JAR" ]]; then
     TRIMMOMATIC_MODE="jar"
@@ -89,14 +91,29 @@ detect_tools() {
 
   # Detect NOVOPlasty.pl if not provided or not in PATH
   if [[ "$NOVOPLASTY_SCRIPT" == "NOVOPlasty.pl" ]] || ! command -v "$NOVOPLASTY_SCRIPT" &>/dev/null; then
-    # Try current directory and subdirectories
-    for path in NOVOPlasty.pl ./*/NOVOPlasty.pl ./*/*/NOVOPlasty.pl; do
-      if [[ -f "$path" ]]; then
-        NOVOPLASTY_SCRIPT="$path"
-        echo "Detected NOVOPlasty script at: $NOVOPLASTY_SCRIPT"
-        break
-      fi
+    # Try versioned NOVOPlasty script names in PATH.
+    IFS=':' read -r -a path_dirs <<< "$PATH"
+    for dir in "${path_dirs[@]}"; do
+      [[ -d "$dir" ]] || continue
+      for path in "$dir"/NOVOPlasty*.pl; do
+        if [[ -f "$path" && -x "$path" ]]; then
+          NOVOPLASTY_SCRIPT="$path"
+          echo "Detected NOVOPlasty script in PATH at: $NOVOPLASTY_SCRIPT"
+          break 2
+        fi
+      done
     done
+
+    if [[ "$NOVOPLASTY_SCRIPT" == "NOVOPlasty.pl" ]]; then
+      # Try current directory and subdirectories
+      for path in NOVOPlasty.pl ./*/NOVOPlasty.pl ./*/*/NOVOPlasty.pl; do
+        if [[ -f "$path" ]]; then
+          NOVOPLASTY_SCRIPT="$path"
+          echo "Detected NOVOPlasty script at: $NOVOPLASTY_SCRIPT"
+          break
+        fi
+      done
+    fi
   fi
 
   # Detect adapters if not provided
