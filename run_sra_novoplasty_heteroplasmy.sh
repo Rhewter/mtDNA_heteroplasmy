@@ -106,21 +106,8 @@ fi
 # detect tools automatically
 detect_tools
 
-# check tools
-for cmd in prefetch fasterq-dump bwa samtools bcftools; do
-  if ! command -v "$cmd" &>/dev/null; then
-    echo "ERROR: required command '$cmd' not found in PATH" >&2
-    exit 1
-  fi
-done
-
-if ! command -v "$TRIMOMATIC_JAR" &>/dev/null && [[ ! -f "$TRIMOMATIC_JAR" ]]; then
-  echo "ERROR: Trimmomatic not found at '$TRIMOMATIC_JAR'" >&2; exit 1
-fi
-
-if ! command -v "$NOVOPLASTY_SCRIPT" &>/dev/null && [[ ! -f "$NOVOPLASTY_SCRIPT" ]]; then
-  echo "ERROR: NOVOPlasty script not found at '$NOVOPLASTY_SCRIPT'" >&2; exit 1
-fi
+ # check dependencies
+ check_dependencies()
 
 mkdir -p "$OUTDIR"
 raw_dir="$OUTDIR/01_raw"
