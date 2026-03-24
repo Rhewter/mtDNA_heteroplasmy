@@ -260,16 +260,25 @@ run_download() {
   local sid_dir="$raw_dir/$sid"
   mkdir -p "$sid_dir"
   local done_flag="$sid_dir/download.done"
+  local prefetch_ok=0
   if [[ -f "$done_flag" ]]; then
     echo "[download] $sid already done, skipping"
     return
   fi
 
   echo "[download] $sid: prefetch"
-  "$PREFETCH_BIN" "$sid" --output-directory "$sid_dir"
+  if "$PREFETCH_BIN" "$sid" --output-directory "$sid_dir"; then
+    prefetch_ok=1
+  else
+    echo "[download] $sid: prefetch failed, trying fasterq-dump directly from accession" >&2
+  fi
 
   echo "[download] $sid: fasterq-dump"
-  "$FASTERQ_DUMP_BIN" "$sid" --split-files --outdir "$sid_dir" --threads "$THREADS"
+  if (( prefetch_ok == 1 )) && [[ -d "$sid_dir/$sid" ]]; then
+    "$FASTERQ_DUMP_BIN" "$sid_dir/$sid" --split-files --outdir "$sid_dir" --threads "$THREADS"
+  else
+    "$FASTERQ_DUMP_BIN" "$sid" --split-files --outdir "$sid_dir" --threads "$THREADS"
+  fi
 
   touch "$done_flag"
 }
