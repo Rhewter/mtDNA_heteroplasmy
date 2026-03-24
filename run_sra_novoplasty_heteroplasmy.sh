@@ -66,10 +66,46 @@ REF_FA="${REF_FA:-}"
 
 TRIMMOMATIC_MODE=""
 declare -a TRIMMOMATIC_CMD=()
+PREFETCH_BIN="prefetch"
+FASTERQ_DUMP_BIN="fasterq-dump"
 
 # function to detect tools automatically
 detect_tools() {
   local path
+  local dir
+  local candidate
+
+  if ! command -v "$PREFETCH_BIN" &>/dev/null; then
+    IFS=':' read -r -a path_dirs <<< "$PATH"
+    for dir in "${path_dirs[@]}"; do
+      [[ -d "$dir" ]] || continue
+      for candidate in "$dir"/prefetch*; do
+        if [[ -f "$candidate" && -x "$candidate" ]]; then
+          PREFETCH_BIN="$candidate"
+          echo "Detected prefetch executable in PATH at: $PREFETCH_BIN"
+          break 2
+        fi
+      done
+    done
+  else
+    PREFETCH_BIN="$(command -v "$PREFETCH_BIN")"
+  fi
+
+  if ! command -v "$FASTERQ_DUMP_BIN" &>/dev/null; then
+    IFS=':' read -r -a path_dirs <<< "$PATH"
+    for dir in "${path_dirs[@]}"; do
+      [[ -d "$dir" ]] || continue
+      for candidate in "$dir"/fasterq-dump*; do
+        if [[ -f "$candidate" && -x "$candidate" ]]; then
+          FASTERQ_DUMP_BIN="$candidate"
+          echo "Detected fasterq-dump executable in PATH at: $FASTERQ_DUMP_BIN"
+          break 2
+        fi
+      done
+    done
+  else
+    FASTERQ_DUMP_BIN="$(command -v "$FASTERQ_DUMP_BIN")"
+  fi
 
   # Prefer an executable in PATH, but also support a jar file path.
   if [[ -f "$TRIMMOMATIC_JAR" ]]; then
@@ -133,12 +169,22 @@ check_dependencies() {
   local missing=0
   local cmd
 
-  for cmd in prefetch fasterq-dump perl bwa samtools bcftools; do
+  for cmd in perl bwa samtools bcftools; do
     if ! command -v "$cmd" &>/dev/null; then
       echo "ERROR: required executable '$cmd' was not found in PATH" >&2
       missing=1
     fi
   done
+
+  if [[ ! -x "$PREFETCH_BIN" ]]; then
+    echo "ERROR: SRA executable 'prefetch' was not found in PATH" >&2
+    missing=1
+  fi
+
+  if [[ ! -x "$FASTERQ_DUMP_BIN" ]]; then
+    echo "ERROR: SRA executable 'fasterq-dump' was not found in PATH" >&2
+    missing=1
+  fi
 
   if [[ "$TRIMMOMATIC_MODE" == "jar" ]]; then
     if [[ ! -f "$TRIMMOMATIC_JAR" ]]; then
@@ -220,10 +266,10 @@ run_download() {
   fi
 
   echo "[download] $sid: prefetch"
-  prefetch "$sid" --output-directory "$sid_dir"
+  "$PREFETCH_BIN" "$sid" --output-directory "$sid_dir"
 
   echo "[download] $sid: fasterq-dump"
-  fasterq-dump "$sid" --split-files --outdir "$sid_dir" --threads "$THREADS"
+  "$FASTERQ_DUMP_BIN" "$sid" --split-files --outdir "$sid_dir" --threads "$THREADS"
 
   touch "$done_flag"
 }
