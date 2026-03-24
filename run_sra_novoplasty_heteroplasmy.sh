@@ -19,7 +19,7 @@ Required:
 Options:
   -o DIR              output base directory (default: ./mtDNA_pipeline_out)
   -t N                threads (default: 8)
-  -n PATH             path to Trimmomatic jar (default: trimmomatic in PATH)
+  -n PATH             path to Trimmomatic executable or jar (default: trimmomatic in PATH)
   -a PATH             adapter fasta (default: adapters/TruSeq3-PE.fa or packaged)
   -p PATH             path to NOVOPlasty.pl script (default: NOVOPlasty.pl in PATH)
   -r PATH             mitochondrial reference fasta for mapping/heteroplasmy (default: auto from assembly)
@@ -48,7 +48,11 @@ while [[ $# -gt 0 ]]; do
     *) POSITIONAL+=("$1"); shift ;; 
   esac
 done
-set -- "${POSITIONAL[@]}"
+if (( ${#POSITIONAL[@]} > 0 )); then
+  set -- "${POSITIONAL[@]}"
+else
+  set --
+fi
 
 # defaults (set if not provided)
 OUTDIR="${OUTDIR:-./mtDNA_pipeline_out}"
@@ -60,15 +64,24 @@ TRIMMOMATIC_JAR="${TRIMMOMATIC_JAR:-trimmomatic}"
 ADAPTERS="${ADAPTERS:-TruSeq3-PE.fa}"
 REF_FA="${REF_FA:-}"
 
+TRIMMOMATIC_MODE=""
+declare -a TRIMMOMATIC_CMD=()
+
 # function to detect tools automatically
 detect_tools() {
-  # Detect Trimmomatic jar if not provided or not in PATH
-  if [[ "$TRIMOMATIC_JAR" == "trimmomatic" ]] || ! command -v "$TRIMOMATIC_JAR" &>/dev/null; then
+  # Prefer an executable in PATH, but also support a jar file path.
+  if [[ -f "$TRIMMOMATIC_JAR" ]]; then
+    TRIMMOMATIC_MODE="jar"
+  elif command -v "$TRIMMOMATIC_JAR" &>/dev/null; then
+    TRIMMOMATIC_JAR="$(command -v "$TRIMMOMATIC_JAR")"
+    TRIMMOMATIC_MODE="exec"
+  else
     # Try common locations for trimmomatic jar
     for path in /usr/share/java/trimmomatic*.jar /opt/trimmomatic/trimmomatic*.jar /usr/local/share/java/trimmomatic*.jar "$HOME"/trimmomatic/trimmomatic*.jar; do
       if [[ -f "$path" ]]; then
-        TRIMOMATIC_JAR="$path"
-        echo "Detected Trimmomatic jar at: $TRIMOMATIC_JAR"
+        TRIMMOMATIC_JAR="$path"
+        TRIMMOMATIC_MODE="jar"
+        echo "Detected Trimmomatic jar at: $TRIMMOMATIC_JAR"
         break
       fi
     done
@@ -99,6 +112,48 @@ detect_tools() {
   fi
 }
 
+check_dependencies() {
+  local missing=0
+  local cmd
+
+  for cmd in prefetch fasterq-dump perl bwa samtools bcftools; do
+    if ! command -v "$cmd" &>/dev/null; then
+      echo "ERROR: required executable '$cmd' was not found in PATH" >&2
+      missing=1
+    fi
+  done
+
+  if [[ "$TRIMMOMATIC_MODE" == "jar" ]]; then
+    if [[ ! -f "$TRIMMOMATIC_JAR" ]]; then
+      echo "ERROR: Trimmomatic jar '$TRIMMOMATIC_JAR' was not found" >&2
+      missing=1
+    fi
+    if ! command -v java &>/dev/null; then
+      echo "ERROR: 'java' is required to run the Trimmomatic jar" >&2
+      missing=1
+    fi
+    TRIMMOMATIC_CMD=(java -jar "$TRIMMOMATIC_JAR")
+  elif [[ "$TRIMMOMATIC_MODE" == "exec" ]]; then
+    TRIMMOMATIC_CMD=("$TRIMMOMATIC_JAR")
+  else
+    echo "ERROR: Trimmomatic was not found. Use '-n /path/to/trimmomatic' or '-n /path/to/trimmomatic.jar'." >&2
+    missing=1
+  fi
+
+  if [[ -f "$NOVOPLASTY_SCRIPT" ]]; then
+    :
+  elif command -v "$NOVOPLASTY_SCRIPT" &>/dev/null; then
+    NOVOPLASTY_SCRIPT="$(command -v "$NOVOPLASTY_SCRIPT")"
+  else
+    echo "ERROR: NOVOPlasty script '$NOVOPLASTY_SCRIPT' was not found. Use '-p /path/to/NOVOPlasty.pl'." >&2
+    missing=1
+  fi
+
+  if (( missing > 0 )); then
+    exit 1
+  fi
+}
+
 if [[ -z "${SRA_LIST:-}" ]]; then
   echo "ERROR: -i sra_ids.txt is required" >&2; usage
 fi
@@ -106,8 +161,8 @@ fi
 # detect tools automatically
 detect_tools
 
- # check dependencies
- check_dependencies()
+# check dependencies
+check_dependencies
 
 mkdir -p "$OUTDIR"
 raw_dir="$OUTDIR/01_raw"
@@ -179,7 +234,7 @@ run_trim() {
   local outU2="$trim_dir/$sid/${sid}_2U.fastq"
 
   echo "[trim] $sid: running Trimmomatic"
-  java -jar "$TRIMOMATIC_JAR" PE -threads "$THREADS" -phred33 \
+  "${TRIMMOMATIC_CMD[@]}" PE -threads "$THREADS" -phred33 \
     "$r1" "$r2" \
     "$outP" "$outU1" "$outP2" "$outU2" \
     ILLUMINACLIP:"$ADAPTERS":2:30:10 $TRIM_PARAMS
