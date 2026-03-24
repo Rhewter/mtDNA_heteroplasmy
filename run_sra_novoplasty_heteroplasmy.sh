@@ -30,15 +30,9 @@ EOF
   exit 1
 }
 
-# defaults
-OUTDIR="./mtDNA_pipeline_out"
-THREADS=8
-TRIM_PARAMS="SLIDINGWINDOW:4:15 MINLEN:36"
-STEP=all
-NOVOPLASTY_SCRIPT="NOVOPlasty.pl"
-TRIMMOMATIC_JAR="trimmomatic"
-ADAPTERS="TruSeq3-PE.fa"
-REF_FA=""
+EOF
+  exit 1
+}
 
 # command line parse
 POSITIONAL=()
@@ -59,6 +53,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 set -- "${POSITIONAL[@]}"
+
+# defaults (set if not provided)
+OUTDIR="${OUTDIR:-./mtDNA_pipeline_out}"
+THREADS="${THREADS:-8}"
+TRIM_PARAMS="${TRIM_PARAMS:-SLIDINGWINDOW:4:15 MINLEN:36}"
+STEP="${STEP:-all}"
+NOVOPLASTY_SCRIPT="${NOVOPLASTY_SCRIPT:-NOVOPlasty.pl}"
+TRIMMOMATIC_JAR="${TRIMMOMATIC_JAR:-trimmomatic}"
+ADAPTERS="${ADAPTERS:-TruSeq3-PE.fa}"
+REF_FA="${REF_FA:-}"
 
 # function to detect tools automatically
 detect_tools() {
