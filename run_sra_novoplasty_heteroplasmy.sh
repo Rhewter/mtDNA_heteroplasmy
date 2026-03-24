@@ -11,7 +11,7 @@ IFS=$'\n\t'
 
 usage() {
   cat <<EOF
-Usage: $0 -i sra_ids.txt [-o outdir] [-t threads] [--trim-params "SLIDINGWINDOW:4:15 MINLEN:36"] [--step all|download|trim|novo|hetero] [--novoplasty-config path]
+Usage: $0 -i sra_ids.txt [-o outdir] [-t threads] [--trim-params "SLIDINGWINDOW:4:15 MINLEN:36"] [--step all|download|trim|novo|hetero]
 
 Required:
   -i FILE             list of SRA run IDs (one per line, e.g., SRR31925970)
@@ -22,6 +22,7 @@ Options:
   -n PATH             path to Trimmomatic executable or jar (default: trimmomatic in PATH)
   -a PATH             adapter fasta (default: adapters/TruSeq3-PE.fa or packaged)
   -p PATH             path to NOVOPlasty.pl script (default: NOVOPlasty.pl in PATH)
+  -s PATH             seed fasta for NOVOPlasty (recommended; if omitted, uses -r when provided)
   -r PATH             mitochondrial reference fasta for mapping/heteroplasmy (default: auto from assembly)
   --trim-params STR   custom trimming params (default: SLIDINGWINDOW:4:15 MINLEN:36)
   --step NAME         run from one step to end: download, trim, novo, hetero, all (default: all)
@@ -41,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     -n) TRIMMOMATIC_JAR="$2"; shift; shift ;; 
     -a) ADAPTERS="$2"; shift; shift ;; 
     -p) NOVOPLASTY_SCRIPT="$2"; shift; shift ;; 
+    -s) SEED_FA="$2"; shift; shift ;; 
     -r) REF_FA="$2"; shift; shift ;; 
     --trim-params) TRIM_PARAMS="$2"; shift; shift ;; 
     --step) STEP="$2"; shift; shift ;; 
@@ -62,6 +64,7 @@ STEP="${STEP:-all}"
 NOVOPLASTY_SCRIPT="${NOVOPLASTY_SCRIPT:-NOVOPlasty.pl}"
 TRIMMOMATIC_JAR="${TRIMMOMATIC_JAR:-trimmomatic}"
 ADAPTERS="${ADAPTERS:-TruSeq3-PE.fa}"
+SEED_FA="${SEED_FA:-}"
 REF_FA="${REF_FA:-}"
 
 TRIMMOMATIC_MODE=""
@@ -247,6 +250,11 @@ if [[ ! -f "$ADAPTERS" ]]; then
   fi
 fi
 
+if [[ -n "$SEED_FA" && ! -f "$SEED_FA" ]]; then
+  echo "ERROR: seed fasta '$SEED_FA' not found" >&2
+  exit 1
+fi
+
 if [[ -n "$REF_FA" && ! -f "$REF_FA" ]]; then
   echo "ERROR: reference fasta '$REF_FA' not found" >&2
   exit 1
@@ -320,6 +328,8 @@ run_trim() {
 run_novoplasty() {
   local sid="$1"
   local done_flag="$novo_dir/$sid.novo.done"
+  local seed_input="${SEED_FA:-$REF_FA}"
+  local assembly=""
   if [[ -f "$done_flag" ]]; then
     echo "[novo] $sid already done, skipping"
     return
@@ -335,6 +345,11 @@ run_novoplasty() {
     echo "ERROR: trimmed paired files for $sid not found" >&2; exit 1
   fi
 
+  if [[ -z "$seed_input" ]]; then
+    echo "ERROR: NOVOPlasty requires a seed fasta. Re-run with '-s /path/to/seed.fasta' or provide '-r /path/to/reference.fasta' to reuse it as seed." >&2
+    exit 1
+  fi
+
   cat > "$merged_fa" <<EOF
 Project name          = ${sid}_novoplasty
 Insert size           = 350
@@ -346,8 +361,8 @@ K-mer                 = 39
 Max memory            =
 Extended log          = 0
 Save assembled reads  = no
-Seed Input            =
-Reference sequence    =
+Seed Input            = $seed_input
+Reference sequence    = ${REF_FA}
 Variance detection    = no
 Chloroplast sequence  =
 Dataset 1             = $p1
@@ -361,6 +376,15 @@ EOF
 
   echo "[novo] $sid: running NOVOPlasty"
   perl "$NOVOPLASTY_SCRIPT" -c "$merged_fa" > "$novo_dir/$sid/${sid}_novoplasty.log" 2>&1
+
+  assembly="$novo_dir/$sid/Final_assembly_${sid}_novoplasty.fasta"
+  if [[ ! -f "$assembly" ]]; then
+    assembly="$novo_dir/$sid/Final_assembly.fasta"
+  fi
+  if [[ ! -f "$assembly" ]]; then
+    echo "ERROR: NOVOPlasty did not produce a final assembly for $sid. Check log: $novo_dir/$sid/${sid}_novoplasty.log" >&2
+    exit 1
+  fi
 
   touch "$done_flag"
 }
