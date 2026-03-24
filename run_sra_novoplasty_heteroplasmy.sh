@@ -60,9 +60,51 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL[@]}"
 
+# function to detect tools automatically
+detect_tools() {
+  # Detect Trimmomatic jar if not provided or not in PATH
+  if [[ "$TRIMOMATIC_JAR" == "trimmomatic" ]] || ! command -v "$TRIMOMATIC_JAR" &>/dev/null; then
+    # Try common locations for trimmomatic jar
+    for path in /usr/share/java/trimmomatic*.jar /opt/trimmomatic/trimmomatic*.jar /usr/local/share/java/trimmomatic*.jar "$HOME"/trimmomatic/trimmomatic*.jar; do
+      if [[ -f "$path" ]]; then
+        TRIMOMATIC_JAR="$path"
+        echo "Detected Trimmomatic jar at: $TRIMOMATIC_JAR"
+        break
+      fi
+    done
+  fi
+
+  # Detect NOVOPlasty.pl if not provided or not in PATH
+  if [[ "$NOVOPLASTY_SCRIPT" == "NOVOPlasty.pl" ]] || ! command -v "$NOVOPLASTY_SCRIPT" &>/dev/null; then
+    # Try current directory and subdirectories
+    for path in NOVOPlasty.pl ./*/NOVOPlasty.pl ./*/*/NOVOPlasty.pl; do
+      if [[ -f "$path" ]]; then
+        NOVOPLASTY_SCRIPT="$path"
+        echo "Detected NOVOPlasty script at: $NOVOPLASTY_SCRIPT"
+        break
+      fi
+    done
+  fi
+
+  # Detect adapters if not provided
+  if [[ ! -f "$ADAPTERS" ]]; then
+    # Try common locations
+    for path in /usr/share/trimmomatic/adapters/TruSeq3-PE.fa /opt/trimmomatic/adapters/TruSeq3-PE.fa "$HOME"/adapters/TruSeq3-PE.fa; do
+      if [[ -f "$path" ]]; then
+        ADAPTERS="$path"
+        echo "Detected adapters at: $ADAPTERS"
+        break
+      fi
+    done
+  fi
+}
+
 if [[ -z "${SRA_LIST:-}" ]]; then
   echo "ERROR: -i sra_ids.txt is required" >&2; usage
 fi
+
+# detect tools automatically
+detect_tools
 
 # check tools
 for cmd in prefetch fasterq-dump bwa samtools bcftools; do
