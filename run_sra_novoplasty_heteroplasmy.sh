@@ -30,10 +30,6 @@ EOF
   exit 1
 }
 
-EOF
-  exit 1
-}
-
 # command line parse
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
